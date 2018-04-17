@@ -1,0 +1,154 @@
+---
+title: "BioConductor_Week4"
+author: "Alisa"
+date: "2/22/2018"
+output: html_document
+---
+##Question 1: What fraction of reads in this file has an A nucleotide in the 5th base of the read?
+
+Intent: Isolate 5th base of each read in Fastq file and find A / total
+1. download data set and use given code to extract fastq file
+2. store fastq file path, use ShortRead package to extract ID, sequence, and quality scores
+3. Import sequence reads into a matrix, columns for base number, rows for sequence number
+
+
+```{r Question 1}
+library(yeastRNASeq)
+fastqFilePath <- system.file("reads", "wt_1_f.fastq.gz", package = "yeastRNASeq")
+library(ShortRead)
+fqFile <- FastqFile(fastqPath)
+reads <- readFastq(fqFile)
+sread(reads)[1:2]
+reads_matrix <- as(sread(reads), "matrix")
+sum(reads_matrix[,5] == "A")/length(reads)
+```
+
+## Question 2: What is the average numeric quality value of the 5th base of these reads?
+
+1. create matrix of fastq quality scores
+2. take average of quality_matrix[,5]
+
+
+```{r Question 2}
+quality_matrix <- as(quality(reads), "matrix")
+mean(quality_matrix[,5])
+```
+
+## Question 3: In below interval, how many reads are duplicated by position?
+Extra info: We will focus on the interval from 800,000 to 801,000 on yeast chromosome 13. A read duplicated by position is a read where at least one more read shares the same position.
+
+1. Get data package
+2. Isolate interval by making GRange for chr13 and specified interval and using ScanBamParam to store interval data
+3. use duplicated() to identify reads with duplicated positions (duplicated() determines which elements of a vector or data frame are duplicates of elements with smaller subscripts, and returns a logical vector indicating which elements (rows) are duplicates.)
+4. Store values of duplicated positions
+5. Add number of duplicates found
+
+
+
+```{r Question 3}
+library(leeBamViews)
+bamFilePath <- system.file("bam", "isowt5_13e.bam", package="leeBamViews")
+library(Rsamtools)
+bamFile <- BamFile(bamFilePath)
+aln <- scanBam(bamFile)
+aln <- aln[[1]]
+names(aln)
+lapply(aln, function(xx) xx[1])
+gr <- GRanges(seqnames = "Scchr13",
+              ranges = IRanges(start = 800000, end = 801000))
+params <- ScanBamParam(which = gr, what = scanBamWhat())
+aln <- scanBam(bamFile, param = params)
+aln <- aln[[1]]
+duplicatedValues = unique(aln$pos[duplicated(aln$pos)])
+sum(aln$pos %in% duplicatedValues)
+```
+
+##Question 4: What is the average number of reads across the 8 samples falling in this interval?
+Extra info: An objective of the original paper was the discovery of novel transcribed regions in yeast. One such region is Scchr13:807762-808068.
+
+1. Trying to construct view of multiple files so use BamViews
+2. 
+
+```{r Question 4}
+bpaths <- list.files(system.file("bam", package="leeBamViews"), pattern = "bam$", full=TRUE)
+bamView <- BamViews(bpaths)
+gr <- GRanges(seqnames = "Scchr13",
+              ranges = IRanges(start = 807762, end = 808068))
+bamRanges(bamView) <- gr
+aln <- scanBam(bamView)
+names(aln)
+names(aln[[1]])
+lens <- list()
+for(i in 1:length(aln)) {
+  lens[i] <- length(aln[[i]][[1]]$seq)
+}
+mean(unlist(lens))
+```
+
+##Question 5: What is the average expression across samples in the control group for the “8149273” probeset (this is a character identifier, not a row number)
+
+```{r Question 5}
+library(c(oligo, GEOquery))
+getGEOSuppFiles("GSE38792")
+list.files("GSE38792")
+untar("GSE38792/GSE38792_RAW.tar", exdir = "GSE38792/CEL")
+list.files("GSE38792/CEL")
+celfiles <- list.files("GSE38792/CEL", full = TRUE)
+rawData <- read.celfiles(celfiles)
+
+#clean up raw data
+filename <- sampleNames(rawData)
+pData(rawData)$filename <- filename
+sampleNames <- sub(".*_", "", filename)
+sampleNames <- sub(".CEL.gz$", "", sampleNames)
+sampleNames(rawData) <- sampleNames
+pData(rawData)$group <- ifelse(grepl("^OSA", sampleNames(rawData)),
+                               "OSA", "Control")
+
+#normalize
+normData <- rma(rawData)
+expr <- exprs(normData)
+mean(expr["8149273",1:8])
+```
+
+## Question 6: What is the absolute value of the log foldchange (𝚕𝚘𝚐𝙵𝙲) of the gene with the lowest 𝙿.𝚟𝚊𝚕𝚞e
+extra info: Use the limma package to fit a two group comparison between the control group and the OSA group, and borrow strength across the genes using 𝚎𝙱𝚊𝚢𝚎𝚜(). Include all 18 samples in the model fit.
+
+```{r: Question 6}
+```
+
+##Question 8: What is the mean difference in beta values between the 3 normal samples and the 3 cancer samples, across OpenSea CpGs?
+
+```{r Question 8}
+library(minfi)
+library(minfiData)
+data("RGsetEx")
+RGset_data <- preprocessFunnorm(RGsetEx)
+beta_RG <- getBeta(RGset_data)
+cpgs <- getIslandStatus(RGset_data)
+pData(RGset_data)$status
+norm <- beta_RG[,c(1,2,5)]
+can <- beta_RF[,c(3,4,6)]
+norm_os <- norm[cpgs == "OpenSea",]
+can_os <- can[cpgs == "OpenSea",]
+mean(norm_os) - mean(can_os)
+```
+
+##Question 9: How many of these DNase hypersensitive sites contain one or more CpGs on the 450k array?
+Extra info: The Caco2 cell line is a colon cancer cell line profiled by ENCODE. Obtain the narrowPeak DNase hyper sensitive sites computed by the analysis working group (AWG).
+
+1. Obtain data from Annotation Hub
+
+
+```{r Question 9}
+ahub <- AnnotationHub()
+qah_h1 <- query(ahub, c("Caco2", "AWG"))
+qah_h1 <- qah_h1[[1]]
+#ahub <- subset(ahub, genome == "hg19")
+#ahub_s <- subset(ahub, dataprovider == "UCSC")
+#hg_cpg <- query(ahub_s, "CpG")
+#hg_cpg <- hg_cpg[[1]]
+#DNase_cpg <- subsetByOverlaps(hg_cpg, qah_h1)
+# ov <- subsetByOverlaps(DNase_cpg, RGset_data)
+gr <- GRanges(RGset_data)
+ov <- subsetByOverlaps(gr, qah_h1)

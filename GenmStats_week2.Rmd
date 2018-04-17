@@ -1,0 +1,146 @@
+---
+title: "GenmStats_Week2"
+author: "Alisa"
+date: "2/25/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Week 2 Quiz: Preprocessing and Data Modeling
+1. Make data comparable by processing to decrease effects of technology variation and becoming aware of other causes in variation that are not due to biology (like batch effects).
+2. Model data linearly.
+
+##Question 1: What percentage of variation is explained by the 1st principal component in the data set if you:
+
+1. Do no transformations?
+2. log2(data + 1) transform?
+3. log2(data + 1) transform and subtract row means?
+
+Intent: Identify vectors with greatest impact on variation using singular value decomposition
+
+1. Calculate singular vectors v, d, u for each rendition of data set
+2. Calculate percent variances calculated from d - d^2 / sum(all d ^2)
+
+```{r Question 1}
+library(Biobase)
+con =url("http://bowtie-bio.sourceforge.net/recount/ExpressionSets/montpick_eset.RData")
+load(file=con)
+close(con)
+mp = montpick.eset
+pdata_mp = pData(mp)
+edata_mp = as.data.frame(exprs(mp))
+fdata_mp = fData(mp)
+edata_mp_log = log2(edata_mp + 1)
+edata_centered = edata_mp_log - rowMeans(edata_mp_log)
+svd1 = svd(edata_mp)
+svd2 = svd(edata_mp_log)
+svd3 = svd(edata_centered)
+svd1$d[1]^2/sum(svd1$d^2)
+svd2$d[1]^2/sum(svd2$d^2)
+svd3$d[1]^2/sum(svd3$d^2)
+```
+
+## Question 2: Perform the log2(data + 1) transform and subtract row means from the samples. Set the seed to 𝟹𝟹𝟹 and use k-means to cluster the samples into two clusters. Use 𝚜𝚟𝚍 to calculate the singular vectors. What is the correlation between the first singular vector and the sample clustering indicator?
+
+1. Use svd3 from above
+2. Find sample clustering indicator using k-means, centers = 2
+
+You can also embed plots, for example:
+
+```{r Question 2}
+set.seed(333)
+kmeans1 = kmeans(edata_centered, centers = 2)
+Vec1 = svd3$v[,1]
+cor(Vec1, kmeans1$centers[1,])
+```
+
+## Question 3: Fit a linear model relating the first gene’s counts to the number of technical replicates, treating the number of replicates as a factor. Plot the data for this gene versus the covariate. Can you think of why this model might not fit well?
+
+1. Download bodymap data
+2. Fit linear regression line with replicates as factor
+
+```{r Question 3}
+con =url("http://bowtie-bio.sourceforge.net/recount/ExpressionSets/bodymap_eset.RData")
+load(file=con)
+close(con)
+bm = bodymap.eset
+edata_bm = exprs(bm)
+pdata_bm = pData(bm)
+library(broom)
+names(pdata_bm)
+table(pdata_bm$num.tech.reps)
+Lm1 = lm(edata_bm[1,] ~ as.factor(pdata_bm$num.tech.reps))
+names(Lm1)
+tidy(Lm1)
+par(pch = 19)
+plot(edata[1,], col = as.numeric((pdata_bm$num.tech.reps)))
+```
+
+##Question 4: Fit a linear model relating he first gene’s counts to the age of the person and the sex of the samples. What is the value and interpretation of the coefficient for age?
+
+1. Linear model for age AND gender
+2. Look at coefficient of line using tidy
+
+``` {r Question 4}
+
+Lm2 <- lm(edata_bm[1,] ~ pdata_bm$age + pdata_bm$gender)
+tidy(Lm2)
+```
+
+##Question 5: Perform the log2(data + 1) transform. Then fit a regression model to each sample using population as the outcome. Do this using the 𝚕𝚖.𝚏𝚒𝚝 function (hint: don't forget the intercept). What is the dimension of the residual matrix, the effects matrix and the coefficients matrix?
+
+1. Use edata_mp_log as transformed data
+2. Fit regression model
+3. Take dimensions of each matrix listed
+
+#question 6: What is the effects matrix?
+4. look at first row of effects matrix + labels, use dimension of original data set and effects matrix to derive answer
+
+#question 9: Why is it difficult to distinguish the study effect from the population effect in the Montgomery Pickrell dataset from ReCount?
+5. For question 9: compare pdata of population versus study
+```{r Question 5}
+library(limma)
+mod1 = model.matrix(~ pdata_mp$population)
+fit1 = lm.fit(mod1,t(edata_mp_log))
+names(fit1)
+dim(fit1$residuals)
+dim(fit1$effects)
+dim(fit1$coefficients)
+fit1$effects[,1] #Question 6
+table(pdata$population, pdata$study) #Question 9
+```
+
+## Question 7: Using BodyMap data: Fit many regression models to the expression data where 𝚊𝚐𝚎 is the outcome variable using the 𝚕𝚖𝙵𝚒𝚝 function from the 𝚕𝚒𝚖𝚖𝚊 package (hint: you may have to subset the expression data to the samples without missing values of age to get the model to fit). What is the coefficient for age for the 1,000th gene? Make a plot of the data and fitted values for this gene. Does the model fit well?
+
+```{r Question 7}
+age_bm <- pdata_bm$age[!is.na(pdata_bm$age)]
+mod1 = model.matrix(~ age_bm)
+fit2 = lmFit(edata_bm[, !is.na(pdata_bm$age)], mod1)
+fit2$coefficients[1000,]
+plot(edata_bm[1000,!is.na(pdata_bm$age)] ~ y, col =2)
+abline(fit2$coefficients[1000,], col = 3, lwd =2)
+```
+
+## Question 8: Fit many regression models to the expression data where 𝚊𝚐𝚎 is the outcome variable and 𝚝𝚒𝚜𝚜𝚞𝚎.𝚝𝚢𝚙𝚎 is an adjustment variable using the 𝚕𝚖𝙵𝚒𝚝 function from the 𝚕𝚒𝚖𝚖𝚊 package (hint: you may have to subset the expression data to the samples without missing values of age to get the model to fit). What is wrong with this model?
+``` {r Question 8}
+mod2 = model.matrix(~ y + as.factor(pdata_bm$tissue.type[!is.na(pdata_bm$age)]))
+fit3 = lmFit(edata[, !is.na(pdata_bm$age)], mod2)
+dim(mod2)
+```
+
+##Question 10: Set the seed using the command 𝚜𝚎𝚝.𝚜𝚎𝚎𝚍(𝟹𝟹𝟹𝟻𝟹) then estimate a single surrogate variable using the 𝚜𝚟𝚊 function after log2(data + 1) transforming the expression data, removing rows with rowMeans less than 1, and treating age as the outcome (hint: you may have to subset the expression data to the samples without missing values of age to get the model to fit). What is the correlation between the estimated surrogate for batch and age? Is the surrogate more highly correlated with 𝚛𝚊𝚌𝚎 or 𝚐𝚎𝚗𝚍𝚎𝚛?
+
+```{r Question 10 }
+set.seed(33353)
+edata_bm_log <- log2(edata_bm +1)
+edata_bm_tr <- edata_bm_log[rowMeans(edata_bm_log)>=1, ]
+mod3 = model.matrix(~ age_bm, data = pdata_bm[!is.na(pdata_bm$age),])
+mod0 = model.matrix(~1, data=pdata_bm[!is.na(pdata_bm$age),])
+library(sva)
+sva1 = sva(dat= edata_tr[,!is.na(pdata_bm$age)], mod = mod1, mod0 = mod0, n.sv = 1)
+cor(sva1$sv, age_bm)
+summary(lm(sva1$sv ~ pdata_bm$gender[!is.na(pdata_bm$age)]))
+summary(lm(sva1$sv ~ pdata_bm$race[!is.na(pdata_bm$age)]))

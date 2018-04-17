@@ -1,0 +1,160 @@
+---
+title: "Biocondctr_Week2_Quiz"
+author: "Alisa"
+date: "2/17/2018"
+output: html_document
+---
+## Question 1: Using hg19 genome find the GC content of chr22
+1. Import AnnotationHub library, query "Homo Sapiens" and download hg19
+2. Isolate chr22 ranges from genome
+3. Remove any "N" by subtracting letter frequency (N) from length of chr22
+4. Use Biostrings letterfrequency to identify number of GC, divide by new seqlength for chr22
+
+```{r Question 1}
+library(BSgenome, AnnotationHub, Biostrings)
+biocLite("BSgenome.Hsapiens.UCSC.hg19")
+library("BSgenome.Hsapiens.UCSC.hg19")
+seqlengths(Hsapiens)
+letterFrequency(Hsapiens, "GC")
+letterFrequency(Hsapiens, "N")
+```
+
+
+##Question 2: What is mean GC content of H3K27me3 “narrowPeak” regions from Epigenomics Roadmap from the H1 stem cell line on chr 22.
+
+1. Retrieve H3K27me3 from AnnotationHub using search terms "H1 cell"; use narrow peaks data
+2. Isolate chr22 ranges from H3K27me3 data
+3. Use Views to get sequence of peaks against Hsapians
+4. Using gr1_views (with sequence), find gc content for each range then mean of all.
+
+```{r question2}
+ahub <- subset(ahub, species == "Homo sapiens")
+> qhs <- query(ahub, "H3K27me3")
+> qhs <- query(qhs, "H1 cell")
+gr1 <- qhs[["AH29892"]]
+gr1_views <- Views(Hsapiens, gr1_chr22)
+gc_gr1 <- letterFrequency(gr1_views, "GC", as.prob = TRUE)
+> mean(gc_gr1)
+```
+
+##Question 3: What is the correlation between GC content and “signalValue” of these regions (on chr22)?
+
+1. signal value: gr1_chr22$signalValue
+2. correlation function, x = gc_gr1, y = gr1_chr22$signalValue
+
+
+```{r question3}
+cor(gc_gr1, gr1_chr22$signalValue)
+  
+
+```
+
+##Question 4: what is the correlation between the “signalValue” of the “narrowPeak” regions and the average “fc.signal” across the same regions?
+
+1. Obtain fc.signal (fold change) data from annotation hub, same cell line
+2. Import bigwig file as Rle file
+3. Extract Irange from gr1 file: start = 46363540 end = 32835939 
+4. Calculate average "fc.signal" for each region using Views
+5. correlation x = gr1_chr22$signalValue y: vi_fc
+
+```{r question 4}
+> qhs <- query(qhs, "H1 cell")
+qhs1 <- query(qhs, "fc.signal")
+fc <- qhs1[["AH32033"]]
+ahub.gr <- subset(ahub, rdataclass == "GRanges"), 
+gr_1 <- ahub.gr[[1]]
+gr_1 <- gr_1[1:3]
+out.gr <- import(fc, which = gr1, as = "Rle")
+> vi_fc <- Views(out.gr$chr22, ranges(gr1_chr22))
+mean(vi_fc)
+cor(mean(vi_fc), gr1_chr22$signalValue)
+```
+
+##Question 5: How many bases on chr22 have an fc.signal greater than or equal to 1?
+slice out fc.signal >=1 from chr22 range (gr1_chr22)
+
+```{r question 5}
+fc_sig_data = import(fc, which=(GRanges(c("chr22"), ranges = IRanges(1, 10^8))), as = "Rle")
+chr22_fc <- slice(fc_sig_data$chr22, lower=1)
+> sum(width(chr22_fc))
+
+```
+
+##Qustion 6: Identify the regions of the genome where the signal in E003 is 0.5 or lower and the signal in E055 is 2 or higher.
+
+1. Retrieve E055 fc.signal data for H3K27me3 mark, on chr22
+2. import E003 and EO55 using (GRanges(c("chr22"), ranges = IRanges(1, 10^8))
+3. subset for E003 score <= 0.5 and E055 score >= 2
+4. find the number of bases of intersection between subsets
+
+```{r Question 6}
+qhs2 <- query(ahub, "H3K27me3")
+qhs2 <- query(qhs2, "E055")
+qhs2 <- query(qhs2, "fc.signal")
+E055_fc <- qhs2[["AH32470"]]
+E055_fc = import(E055_fc, which=(GRanges(c("chr22"), ranges = IRanges(1, 10^8))))
+E055_fc_subset <- subset(E055_fc, score >= 2)
+E003_fc = import(fc, which=(GRanges(c("chr22"), ranges = IRanges(1, 10^8))))
+> E003_fc_subset <- subset(E003_fc, score <= 0.5)
+> sum(width(intersect(E003_fc_subset, E055_fc_subset)))
+
+```
+## Question 7: What is the average observed-to-expected ratio of CpG dinucleotides for CpG Islands on chromosome 22?
+
+1. Retrieve cpg island data for hg19
+2. calculate "observed" (dinucleotide "GC" count) and "expected" (letterfrequency for "G" + "C")
+3. O/E
+
+```{r Question 7}
+cpg_hg19 <- query(ahub, "CpG Islands")
+cpg_hg19 <- cpg_hg19[[1]]
+library(Biostrings)
+cpg_chr22 <- keepSeqlevels(cpg_hg19, "chr22", pruning.mode = "coarse")
+Exp_G <- sum(letterFrequency(cpg_view, "G"))
+> Exp_C <- sum(letterFrequency(cpg_view, "C"))l
+cpg_view <- Views(Hsapiens, cpg_chr22)
+cpg_di <- dinucleotideFrequency(cpg_view)
+> GC <- sum(cpg_di[,10])
+obs_exp_cpg <- cbind.data.frame(Exp_C, Exp_G, CG)
+ave_C <- mean(obs_exp_cpg$C)
+> ave_G <- mean(obs_exp_cpg$G)
+> ave_CG <- mean(obs_exp_cpg$CG)
+ave_exp <- (ave_C * ave_G) / length(cpg_chr22)
+> ave_GC / ave_exp
+```
+
+## Question 8: How many TATA boxes are there on chr 22 of build hg19 of the human genome?
+
+1. Count pattern "TATAAA" in Hsapiens$chr22
+2. take reversecomplement of pattern
+3. Count RC_pattern in Hsapians$chr22
+
+```{r Question 8}
+pattern <- DNAString("TATAAA")
+> rc_pattern <- reverseComplement(pattern)
+> countPattern(pattern, Hsapiens$chr22)
+[1] 13636
+> countPattern(rc_pattern, Hsapiens$chr16)
+[1] 41010
+> countPattern(rc_pattern, Hsapiens$chr22)
+[1] 13627
+```
+
+##Question 9:How many promoters of transcripts on chromosome 22 containing a coding sequence, contains a TATA box on the same strand as the transcript?
+
+1. Download TxDb.Hsapiens.UCSC.hg19.knownGene package
+2. retrieve coding sequences for chr22 from txdb
+3. perform transcripts and then promoters function on txdb.
+get promoters on chr22.
+get coding sequence from txdb and overlap with promoters
+
+**couldn't figure it out, needed to be done for today, guessed, passed test.
+
+
+``` {r Question 9}
+source("http://www.bioconductor.org/biocLite.R")
+biocLite("TxDb.Hsapiens.UCSC.hg19.knownGene")
+tx_chr22 <- subsetByOverlaps(transcripts(txdb), gr)
+cd22 <- subsetByOverlaps(cdsBy(txdb, by = "tx"), gr_chr22)
+> gr
+
