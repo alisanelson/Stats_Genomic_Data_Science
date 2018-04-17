@@ -1,1 +1,3 @@
 Statistics in Genomic Data Science
+
+Practicing command line repository using Genomic Data Science Specialization coursework.
